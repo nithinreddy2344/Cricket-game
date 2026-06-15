@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cricket Clash — ODI Card Duel</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --pitch: #2d5a1b;
+    --cream: #f5f0e8;
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --red: #c0392b;
+    --sky: #1a6ea8;
+    --dark: #0f1a0a;
+    --card-bg: #fffdf7;
+    --shadow: rgba(0,0,0,0.3);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--dark);
+    color: var(--cream);
+    min-height: 100vh;
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 59px, rgba(255,255,255,0.03) 60px),
+                      repeating-linear-gradient(90deg, transparent, transparent 59px, rgba(255,255,255,0.03) 60px);
+  }
+
+  .screen { display: none; min-height: 100vh; flex-direction: column; }
+  .screen.active { display: flex; }
+
+  .stumps-icon { font-size: 64px; animation: glow 2.5s ease-in-out infinite alternate; }
+  @keyframes glow { from { filter: drop-shadow(0 0 10px var(--gold)); } to { filter: drop-shadow(0 0 30px var(--gold-light)); } }
+
+  h1.title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(48px, 10vw, 88px);
+    letter-spacing: 4px; color: var(--gold);
+  }
+
+  .btn-primary {
+    background: var(--gold); color: var(--dark);
+    font-family: 'Bebas Neue', sans-serif; font-size: 20px;
+    letter-spacing: 3px; padding: 13px 44px; border-radius: 4px;
+    cursor: pointer; border: none;
+    box-shadow: 0 4px 20px rgba(201,168,76,0.3);
+  }
+  .btn-primary:hover { background: var(--gold-light); transform: translateY(-2px); }
+
+  .hand-display { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding: 10px; }
+  .hand-slot {
+    width: 78px; height: 110px; border: 2px dashed rgba(201,168,76,0.4);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: rgba(245,240,232,0.4); text-align: center;
+  }
+  .hand-slot.filled { border-style: solid; background: rgba(201,168,76,0.1); cursor: pointer; }
+  .hand-slot.captain-slot { border-color: var(--red); background: rgba(192,57,43,0.15); }
+
+  .player-pool {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px; padding: 15px; max-height: 380px; overflow-y: auto;
+  }
+  .pool-card {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px; padding: 12px; cursor: pointer;
+  }
+  .pool-card:hover { border-color: var(--gold); transform: translateY(-3px); }
+  .pool-card.drafted { opacity: 0.3; pointer-events: none; }
+
+  .mini-card {
+    width: 85px; background: var(--card-bg); border-radius: 8px;
+    overflow: hidden; cursor: pointer; transition: all 0.2s;
+    box-shadow: 0 4px 12px var(--shadow);
+  }
+  .mini-card:hover:not(.played-mini) { transform: translateY(-6px); }
+  .mini-card.played-mini { opacity: 0.35; pointer-events: none; }
+  .mini-card.captain-mini { border: 2px solid var(--red); }
+
+  .scoreboard, .stat-reveal, .arena {
+    width: 100%; max-width: 640px; margin: 10px auto; padding: 12px;
+    background: rgba(255,255,255,0.04); border-radius: 12px;
+  }
+  .pts { font-family: 'Bebas Neue', sans-serif; font-size: 42px; color: var(--gold); }
+
+  .round-result {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+  }
+  .round-result.show { display: flex; }
+  .result-box {
+    background: var(--dark); border: 3px solid var(--gold);
+    border-radius: 16px; padding: 30px; text-align: center; max-width: 360px;
+  }
+</style>
+</head>
+<body>
+
+<!-- INTRO -->
+<div id="intro" class="screen active">
+  <span class="stumps-icon">🏏</span>
+  <h1 class="title">CRICKET CLASH</h1>
+  <p class="subtitle">7v7 ODI Card Duel</p>
+  <button class="btn-primary" onclick="startDraft()">START DRAFT</button>
+</div>
+
+<!-- DRAFT -->
+<div id="draft" class="screen">
+  <div style="text-align:center; padding:20px;">
+    <h2>DRAFT YOUR SQUAD (7 Players)</h2>
+    <p id="draft-status">0 / 7 selected</p>
+  </div>
+  <div class="hand-display" id="hand-display"></div>
+  <p id="captain-hint" style="display:none; text-align:center; color:var(--gold);">👑 Tap a player to make them Captain</p>
+  <div class="player-pool" id="player-pool"></div>
+  <div style="text-align:center; padding:20px;">
+    <button class="btn-primary" onclick="randomDraft()" style="margin:5px;">Quick Pick</button>
+    <button class="btn-primary" id="start-game-btn" onclick="startGame()" style="display:none;">START MATCH →</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="game" class="screen">
+  <div class="scoreboard" style="display:flex;justify-content:space-between;align-items:center;">
+    <div style="text-align:center;"><div style="font-size:12px;color:#aaa;">YOU</div><div class="pts" id="player-score">0</div></div>
+    <div style="text-align:center;">
+      <div id="round-label" style="font-size:14px;color:#aaa;">ROUND 1 / 7</div>
+      <div id="round-stat-name" style="font-weight:bold;color:var(--gold);"></div>
+    </div>
+    <div style="text-align:center;"><div style="font-size:12px;color:#aaa;">CPU</div><div class="pts" id="cpu-score">0</div></div>
+  </div>
+
+  <div class="stat-reveal">
+    <div style="font-size:13px;color:#aaa;">THIS ROUND</div>
+    <div id="stat-label" style="font-size:18px;font-weight:bold;color:var(--gold);"></div>
+  </div>
+
+  <div class="arena" style="display:flex;justify-content:center;gap:40px;align-items:center;margin:20px 0;">
+    <div style="text-align:center;">
+      <div style="font-size:12px;color:#888;margin-bottom:8px;">YOUR CARD</div>
+      <div id="player-chosen-card"></div>
+    </div>
+    <div style="font-size:32px;color:rgba(255,255,255,0.2);">VS</div>
+    <div style="text-align:center;">
+      <div style="font-size:12px;color:#888;margin-bottom:8px;">CPU CARD</div>
+      <div id="cpu-chosen-card"></div>
+    </div>
+  </div>
+
+  <p id="select-hint" style="text-align:center;margin:10px 0;">Select a card below</p>
+  <div id="hand-row" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;padding:10px;"></div>
+  
+  <div style="text-align:center;margin:20px;">
+    <button class="btn-primary" id="commit-btn" onclick="commitCard()" disabled>PLAY CARD ▶</button>
+  </div>
+</div>
+
+<!-- ROUND RESULT -->
+<div id="round-result" class="round-result">
+  <div class="result-box">
+    <div id="res-icon" style="font-size:60px;margin:10px;"></div>
+    <div id="res-title" style="font-size:26px;font-weight:bold;"></div>
+    <div id="res-stat" style="margin:15px 0;color:#ccc;"></div>
+    <button class="btn-primary" onclick="nextRound()" style="width:100%;padding:14px;">NEXT ROUND →</button>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover" class="screen">
+  <div style="text-align:center;padding:40px 20px;">
+    <div id="final-trophy" style="font-size:90px;"></div>
+    <div id="final-title" style="font-size:38px;margin:20px 0;"></div>
+    <div id="final-score" style="font-size:48px;color:var(--gold);"></div>
+    <button class="btn-primary" onclick="resetGame()" style="margin-top:30px;">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+// ==================== DATA ====================
+var PLAYERS = [
+  {name:"Sachin Tendulkar", country:"IND", role:"batsman", runs:18426, wkts:154, avg:44.8, sr:86.2, tons:49, catches:140, eco:5.1},
+  {name:"Virat Kohli", country:"IND", role:"batsman", runs:13906, wkts:4, avg:58.1, sr:93.2, tons:50, catches:128, eco:6.3},
+  {name:"Kumar Sangakkara", country:"SRI", role:"batsman", runs:14234, wkts:1, avg:41.9, sr:78.9, tons:25, catches:99, eco:0},
+  {name:"Ricky Ponting", country:"AUS", role:"batsman", runs:13704, wkts:3, avg:42.0, sr:80.4, tons:30, catches:160, eco:5.8},
+  {name:"Brian Lara", country:"WI", role:"batsman", runs:10405, wkts:4, avg:40.5, sr:79.6, tons:19, catches:120, eco:6.2},
+  {name:"AB de Villiers", country:"SA", role:"batsman", runs:9577, wkts:1, avg:53.5, sr:101.0, tons:25, catches:172, eco:5.2},
+  {name:"Jacques Kallis", country:"SA", role:"allrounder", runs:11579, wkts:273, avg:44.3, sr:72.9, tons:17, catches:133, eco:4.9},
+  {name:"Wasim Akram", country:"PAK", role:"bowler", runs:3717, wkts:502, avg:15.2, sr:46.1, tons:0, catches:88, eco:3.9},
+  {name:"Muttiah Muralitharan", country:"SRI", role:"bowler", runs:674, wkts:534, avg:23.1, sr:33.7, tons:0, catches:65, eco:3.9},
+  {name:"Shane Warne", country:"AUS", role:"bowler", runs:1018, wkts:293, avg:25.7, sr:36.5, tons:0, catches:80, eco:4.2},
+  {name:"Glenn McGrath", country:"AUS", role:"bowler", runs:115, wkts:381, avg:22.0, sr:31.3, tons:0, catches:39, eco:3.9},
+  {name:"Sanath Jayasuriya", country:"SRI", role:"allrounder", runs:13430, wkts:323, avg:32.4, sr:91.2, tons:28, catches:109, eco:5.0},
+  {name:"MS Dhoni", country:"IND", role:"batsman", runs:10773, wkts:0, avg:50.6, sr:87.6, tons:10, catches:321, eco:0},
+  {name:"Chris Gayle", country:"WI", role:"batsman", runs:10480, wkts:167, avg:37.0, sr:85.9, tons:25, catches:94, eco:4.9},
+  {name:"Rohit Sharma", country:"IND", role:"batsman", runs:10709, wkts:8, avg:48.7, sr:89.8, tons:31, catches:168, eco:5.4}
+];
+
+var STAT_ROUNDS = [
+  {key:"runs", label:"ODI Runs", higher:true},
+  {key:"wkts", label:"ODI Wickets", higher:true},
+  {key:"avg", label:"Batting Average", higher:true},
+  {key:"sr", label:"Strike Rate", higher:true},
+  {key:"tons", label:"Centuries", higher:true},
+  {key:"catches", label:"Catches", higher:true},
+  {key:"eco", label:"Economy Rate", higher:false}
+];
+
+// ==================== STATE ====================
+var playerHand = [], captainIdx = -1, cpuHand = [];
+var rounds = [], currentRound = 0, playerScore = 0, cpuScore = 0;
+var selectedHandPos = -1, playedPositions = [], captainUsed = false;
+
+// ==================== FUNCTIONS ====================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function getStat(p, key) { return p[key] !== undefined ? p[key] : 0; }
+
+function startDraft() {
+  playerHand = []; captainIdx = -1; cpuHand = [];
+  currentRound = 0; playerScore = 0; cpuScore = 0;
+  playedPositions = []; captainUsed = false;
+
+  showScreen('draft');
+  document.getElementById('start-game-btn').style.display = 'none';
+  document.getElementById('captain-hint').style.display = 'none';
+  renderPool();
+  renderHand();
+}
+
+function renderPool() {
+  const pool = document.getElementById('player-pool');
+  pool.innerHTML = '';
+  PLAYERS.forEach((p, i) => {
+    if (playerHand.includes(i)) return;
+    const div = document.createElement('div');
+    div.className = 'pool-card';
+    div.innerHTML = `<strong>${p.name}</strong><br><small>${p.country} • ${p.role}</small>`;
+    div.onclick = () => draftPlayer(i);
+    pool.appendChild(div);
+  });
+}
+
+function renderHand() {
+  const container = document.getElementById('hand-display');
+  container.innerHTML = '';
+  for (let i = 0; i < 7; i++) {
+    const slot = document.createElement('div');
+    if (i < playerHand.length) {
+      const p = PLAYERS[playerHand[i]];
+      const isCapt = (captainIdx === i);
+      slot.className = `hand-slot filled ${isCapt ? 'captain-slot' : ''}`;
+      slot.innerHTML = `<strong>${p.name.split(' ').pop()}</strong><br><small>${p.country}</small>`;
+      if (captainIdx === -1) slot.onclick = () => pickCaptain(i);
+    } else {
+      slot.className = 'hand-slot';
+      slot.textContent = i+1;
+    }
+    container.appendChild(slot);
+  }
+}
+
+function draftPlayer(idx) {
+  if (playerHand.length >= 7 || playerHand.includes(idx)) return;
+  playerHand.push(idx);
+  renderPool();
+  renderHand();
+
+  if (playerHand.length === 7) {
+    document.getElementById('draft-status').textContent = "7/7 — Choose Captain";
+    document.getElementById('captain-hint').style.display = 'block';
+    document.getElementById('start-game-btn').style.display = 'inline-block';
+  } else {
+    document.getElementById('draft-status').textContent = `${playerHand.length}/7 selected`;
+  }
+}
+
+function pickCaptain(idx) {
+  captainIdx = idx;
+  document.getElementById('captain-hint').style.display = 'none';
+  renderHand();
+}
+
+function randomDraft() {
+  const indices = Array.from({length: PLAYERS.length}, (_,i) => i);
+  indices.sort(() => Math.random() - 0.5);
+  playerHand = indices.slice(0,7);
+  captainIdx = Math.floor(Math.random() * 7);
+  document.getElementById('draft-status').textContent = "7/7 — Captain Chosen";
+  document.getElementById('captain-hint').style.display = 'none';
+  document.getElementById('start-game-btn').style.display = 'inline-block';
+  renderPool();
+  renderHand();
+}
+
+function startGame() {
+  const taken = {};
+  playerHand.forEach(i => taken[i] = true);
+  let pool = [];
+  for (let i = 0; i < PLAYERS.length; i++) if (!taken[i]) pool.push(i);
+  pool.sort(() => Math.random() - 0.5);
+  cpuHand = pool.slice(0,7);
+
+  rounds = STAT_ROUNDS.slice().sort(() => Math.random() - 0.5);
+
+  currentRound = 0; playerScore = 0; cpuScore = 0;
+  playedPositions = []; captainUsed = false;
+
+  showScreen('game');
+  loadRound();
+}
+
+function loadRound() {
+  selectedHandPos = -1;
+  const r = rounds[currentRound];
+  document.getElementById('round-label').textContent = `ROUND ${currentRound+1} / 7`;
+  document.getElementById('round-stat-name').textContent = r.label;
+  document.getElementById('stat-label').textContent = r.higher ? "Higher is Better" : "Lower is Better";
+  document.getElementById('player-score').textContent = playerScore;
+  document.getElementById('cpu-score').textContent = cpuScore;
+
+  document.getElementById('player-chosen-card').innerHTML = `<div style="width:138px;height:190px;background:#1a3a0f;border:2px dashed #666;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:50px;color:#555;">❓</div>`;
+  document.getElementById('cpu-chosen-card').innerHTML = `<div style="width:138px;height:190px;background:#1a3a0f;border:2px dashed #666;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:40px;color:#555;">🤖</div>`;
+
+  document.getElementById('commit-btn').disabled = true;
+  renderHandRow();
+}
+
+function renderHandRow() {
+  const row = document.getElementById('hand-row');
+  row.innerHTML = '';
+  playerHand.forEach((pidx, pos) => {
+    if (playedPositions.includes(pos)) return;
+    const p = PLAYERS[pidx];
+    const isCapt = (captainIdx === pos && !captainUsed);
+    const div = document.createElement('div');
+    div.className = `mini-card ${isCapt ? 'captain-mini' : ''}`;
+    div.innerHTML = `
+      <div style="padding:8px 6px;background:linear-gradient(#1a5276,#2980b9);color:white;font-size:11px;">
+        <strong>${p.name.split(' ').pop()}</strong>${isCapt ? ' 👑' : ''}
+      </div>
+      <div style="padding:6px;font-size:10px;color:#555;">${p.country} • ${p.role}</div>
+    `;
+    div.onclick = () => { selectedHandPos = pos; renderHandRow(); document.getElementById('commit-btn').disabled = false; };
+    row.appendChild(div);
+  });
+}
+
+function commitCard() {
+  if (selectedHandPos === -1) return;
+  const r = rounds[currentRound];
+  const pp = PLAYERS[playerHand[selectedHandPos]];
+  const isCapt = (captainIdx === selectedHandPos && !captainUsed);
+
+  const cpuPos = cpuBestCard(r);
+  const cp = PLAYERS[cpuHand[cpuPos]];
+
+  const pVal = getStat(pp, r.key);
+  const cVal = getStat(cp, r.key);
+  const pEff = isCapt ? pVal * 2 : pVal;
+
+  if (isCapt) captainUsed = true;
+
+  document.getElementById('player-chosen-card').innerHTML = `<div style="width:138px;height:190px;background:var(--card-bg);border-radius:12px;padding:10px;font-size:13px;color:#222;text-align:center;"><strong>${pp.name.split(' ').pop()}</strong><br><b style="font-size:18px;">${pEff}</b></div>`;
+  document.getElementById('cpu-chosen-card').innerHTML = `<div style="width:138px;height:190px;background:var(--card-bg);border-radius:12px;padding:10px;font-size:13px;color:#222;text-align:center;"><strong>${cp.name.split(' ').pop()}</strong><br><b style="font-size:18px;">${cVal}</b></div>`;
+
+  let outcome = 'draw';
+  if (r.higher) outcome = pEff > cVal ? 'win' : (pEff < cVal ? 'lose' : 'draw');
+  else outcome = pEff < cVal ? 'win' : (pEff > cVal ? 'lose' : 'draw');
+
+  if (outcome === 'win') playerScore += isCapt ? 2 : 1;
+  else if (outcome === 'lose') cpuScore++;
+
+  playedPositions.push(selectedHandPos);
+  cpuHand.splice(cpuPos, 1);
+
+  showRoundResult(outcome, r.label, pEff, cVal);
+}
+
+function cpuBestCard(r) {
+  let best = 0, bestVal = -Infinity;
+  cpuHand.forEach((idx, i) => {
+    let val = getStat(PLAYERS[idx], r.key);
+    if (!r.higher) val = 10000 - val;
+    if (val > bestVal) { bestVal = val; best = i; }
+  });
+  return best;
+}
+
+function showRoundResult(outcome, stat, pVal, cVal) {
+  const icons = {win:"🏆", lose:"💀", draw:"🤝"};
+  const titles = {win:"YOU WIN!", lose:"CPU WINS", draw:"DRAW"};
+  document.getElementById('res-icon').innerHTML = icons[outcome];
+  document.getElementById('res-title').innerHTML = titles[outcome];
+  document.getElementById('res-stat').innerHTML = stat + `<br><small>You ${pVal} vs CPU ${cVal}</small>`;
+  document.getElementById('round-result').classList.add('show');
+}
+
+function nextRound() {
+  document.getElementById('round-result').classList.remove('show');
+  currentRound++;
+  if (currentRound >= 7) showGameOver();
+  else loadRound();
+}
+
+function showGameOver() {
+  showScreen('gameover');
+  const won = playerScore > cpuScore;
+  document.getElementById('final-trophy').textContent = won ? "🏆" : "😔";
+  document.getElementById('final-title').textContent = won ? "YOU WIN THE MATCH!" : "CPU WINS THE MATCH";
+  document.getElementById('final-score').textContent = `${playerScore} - ${cpuScore}`;
+}
+
+function resetGame() { startDraft(); }
+</script>
+</body>
+</html>
